@@ -1,3 +1,4 @@
+import {persistentSessions,consumeLoginAttempt} from './session-store.mjs';
 import {documentMetadata,documentSnapshot,registerDocument,setDocumentStatus} from './documents.mjs';
 import {eventCategory,validCategory} from './categories.mjs';
 import {reviewDocument} from './review-export.mjs';
@@ -26,31 +27,31 @@ function normalize(s){
  for(let i=0;i<s.periods.length;i++)for(let j=i+1;j<s.periods.length;j++)if(s.periods[i].start<=s.periods[j].end&&s.periods[i].end>=s.periods[j].start)fail('Períodos sobrepostos.');
  return {schemaVersion:1,campus:String(s.campus||''),year:s.year,offer:s.offer,regime:s.regime,weekdays:s.weekdays,weekEvidence:String(s.weekEvidence||'').slice(0,240),weekConfirmed:s.weekConfirmed,periods:s.periods.map(({id,name,start,end})=>({id,name,start,end})),events:s.events.map(e=>({id:e.id,name:e.name,start:e.start,end:e.end,kind:e.kind,evidence:e.evidence,category:eventCategory(e)}))};
 }
-export async function createApp({directory,setupCode=randomBytes(16).toString('hex'),pdfRenderer=renderCalendarPdf,googleAuth=createGoogleAuth(null),publicOrigin=null}){
- const store=await openStore(directory),sessions=new Map(),attempts=new Map();
- const routes=new Map([['/',['web/portal.html','text/html']],['/documents.js',['web/documents.js','text/javascript']],['/portal.js',['web/portal.js','text/javascript']],['/ativar',['web/activate.html','text/html']],['/activate.js',['web/activate.js','text/javascript']],['/review.js',['web/review.js','text/javascript']],['/portal.css',['web/portal.css','text/css']],['/editor',['web/index.html','text/html']],['/app.js',['web/app.js','text/javascript']],['/style.css',['web/style.css','text/css']],['/calendar.mjs',['src/calendar.mjs','text/javascript']],['/saturdays.mjs',['src/saturdays.mjs','text/javascript']],['/print.mjs',['web/print.mjs','text/javascript']],['/categories.mjs',['src/categories.mjs','text/javascript']],['/src/categories.mjs',['src/categories.mjs','text/javascript']],['/ifpr-logo.png',['web/ifpr-logo.png','image/png']],['/proens.css',['web/proens.css','text/css']]]);
- const server=http.createServer(async(req,res)=>{
+export async function createApp({directory,setupEmail=null,files=null,store:providedStore=null,setupCode=randomBytes(16).toString('hex'),pdfRenderer=renderCalendarPdf,googleAuth=createGoogleAuth(null),publicOrigin=null}){
+ const store=providedStore||await openStore(directory),sessions=persistentSessions(store);
+ const routes=new Map([['/',['web/portal.html','text/html']],['/upload.js',['web/upload.js','text/javascript']],['/documents.js',['web/documents.js','text/javascript']],['/portal.js',['web/portal.js','text/javascript']],['/ativar',['web/activate.html','text/html']],['/activate.js',['web/activate.js','text/javascript']],['/review.js',['web/review.js','text/javascript']],['/portal.css',['web/portal.css','text/css']],['/editor',['web/index.html','text/html']],['/app.js',['web/app.js','text/javascript']],['/style.css',['web/style.css','text/css']],['/calendar.mjs',['src/calendar.mjs','text/javascript']],['/saturdays.mjs',['src/saturdays.mjs','text/javascript']],['/print.mjs',['web/print.mjs','text/javascript']],['/categories.mjs',['src/categories.mjs','text/javascript']],['/src/categories.mjs',['src/categories.mjs','text/javascript']],['/ifpr-logo.png',['web/ifpr-logo.png','image/png']],['/proens.css',['web/proens.css','text/css']]]);
+ const handle=async(req,res)=>{
   const send=(status,body)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body));};
   try{
-   const origin=`http://127.0.0.1:${server.address().port}`,canonicalOrigin=publicOrigin||googleAuth.config?.origin||origin;
-   if(![`127.0.0.1:${server.address().port}`,`localhost:${server.address().port}`,new URL(canonicalOrigin).host].includes(req.headers.host))fail('Host inválido.',403);
+   const origin=`http://127.0.0.1:${(server.address()?.port||app.localPort||4173)}`,canonicalOrigin=publicOrigin||googleAuth.config?.origin||origin;
+   if(![`127.0.0.1:${(server.address()?.port||app.localPort||4173)}`,`localhost:${(server.address()?.port||app.localPort||4173)}`,new URL(canonicalOrigin).host].includes(req.headers.host))fail('Host inválido.',403);
    const path=new URL(req.url,origin).pathname,method=req.method;
-   if(!path.startsWith('/api/')){const a=routes.get(path);if(!a||method!=='GET')fail('Não encontrado.',404);const content=await readFile(new URL('../'+a[0],import.meta.url));res.writeHead(200,{'Content-Type':a[1]+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"});res.end(content);return;}
+   if(!path.startsWith('/api/')){const a=routes.get(path);if(!a||method!=='GET')fail('Não encontrado.',404);const content=await readFile(new URL('../'+a[0],import.meta.url));res.writeHead(200,{'Content-Type':a[1]+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"});res.end(content);return;}
    let body={};if(!['GET','HEAD'].includes(method)){
     if(req.headers.origin&&![origin,origin.replace('127.0.0.1','localhost'),canonicalOrigin].includes(req.headers.origin))fail('Origem inválida.',403);
     if(req.headers['x-dentec-request']!=='1'||!String(req.headers['content-type']).startsWith('application/json'))fail('Requisição inválida.',403);
     let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>12_000_000)fail('Arquivo muito grande.',413);chunks.push(chunk);}try{body=JSON.parse(Buffer.concat(chunks).toString()||'{}');}catch{fail('JSON inválido.');}
    }
-   const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('dentec_session='))?.slice('dentec_session='.length),session=sessions.get(token);
-   const user=session&&session.expires>Date.now()?store.read().users.find(u=>u.id===session.userId&&u.active):null;
+   const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('dentec_session='))?.slice('dentec_session='.length),session=await sessions.get(token);
+   const user=session&&session.expires>Date.now()?(await store.read()).users.find(u=>u.id===session.userId&&u.active):null;
    const audit=(db,action,id)=>db.audit.push({at:new Date().toISOString(),actor:user?.id||'setup',action,id});
    const admin=()=>{if(user.role!=='ADMIN')fail('Acesso exclusivo da administração.',403);};
    const owns=c=>{if(!c||(user.role!=='ADMIN'&&c.campusId!==user.campusId))fail('Registro não encontrado.',404);return c;};
    if(path==='/api/invitations/check'&&method==='POST'){
-    const db=store.read(),{user:invited,invite}=findInvitation(db,body.token);send(200,{name:invited.name,email:invited.email,role:invited.role,campus:db.campuses.find(c=>c.id===invited.campusId)?.name||null,expiresAt:invite.expiresAt});return;
+    const db=(await store.read()),{user:invited,invite}=findInvitation(db,body.token);send(200,{name:invited.name,email:invited.email,role:invited.role,campus:db.campuses.find(c=>c.id===invited.campusId)?.name||null,expiresAt:invite.expiresAt});return;
    }
    if(path==='/api/invitations/accept'&&method==='POST'){
-    findInvitation(store.read(),body.token);const credentials=await password(body.password);
+    findInvitation((await store.read()),body.token);const credentials=await password(body.password);
     await store.change(db=>acceptInvitation(db,body.token,body.email,credentials));send(200,{ok:true});return;
    }
    if(path==='/api/google/start'&&method==='POST'){
@@ -61,26 +62,46 @@ export async function createApp({directory,setupCode=randomBytes(16).toString('h
     try{
      const query=new URL(req.url,origin).searchParams,binding=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('dentec_google='))?.slice('dentec_google='.length);
      const identity=await googleAuth.finish({state:query.get('state'),code:query.get('code'),binding});const account=await authorizeGoogleUser(store,identity);
-     const newToken=randomBytes(32).toString('hex');if(token)sessions.delete(token);sessions.set(newToken,{userId:account.id,expires:Date.now()+28800000});
+     const newToken=randomBytes(32).toString('hex');if(token)await sessions.delete(token);await sessions.set(newToken,{userId:account.id,expires:Date.now()+28800000});
      res.writeHead(303,{'Location':'/','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':[clear,`dentec_session=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${canonicalOrigin.startsWith('https:')?'; Secure':''}`]});res.end();
     }catch{res.writeHead(303,{'Location':'/?google_error=1','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();}return;
    }
-   if(path==='/api/status'&&method==='GET'){send(200,{setupRequired:!store.read().users.length,googleEnabled:googleAuth.enabled,user:user?safeUser(user):null});return;}
-   if(path==='/api/setup'&&method==='POST'){if(body.code!==setupCode)fail('Código de instalação incorreto.',403);const credentials=await password(body.password),mail=email(body.email),name=text(body.name);await store.change(db=>{if(db.users.length)fail('Conta ADMIN já criada.',409);db.users.push({id:randomUUID(),name,email:mail,role:'ADMIN',campusId:null,active:true,...credentials});audit(db,'CREATE_ADMIN',mail);});send(201,{ok:true});return;}
+   if(path==='/api/status'&&method==='GET'){send(200,{setupRequired:!(await store.read()).users.length,googleEnabled:googleAuth.enabled,user:user?safeUser(user):null});return;}
+   if(path==='/api/setup'&&method==='POST'){if(body.code!==setupCode||(setupEmail&&String(body.email).trim().toLowerCase()!==setupEmail))fail('Código ou e-mail de instalação incorreto.',403);const credentials=await password(body.password),mail=email(body.email),name=text(body.name);await store.change(db=>{if(db.users.length)fail('Conta ADMIN já criada.',409);db.users.push({id:randomUUID(),name,email:mail,role:'ADMIN',campusId:null,active:true,...credentials});audit(db,'CREATE_ADMIN',mail);});send(201,{ok:true});return;}
    if(path==='/api/login'&&method==='POST'){
-    const key=req.socket.remoteAddress,now=Date.now();let a=attempts.get(key);if(!a||a.until<now)a={count:0,until:now+900000};a.count++;attempts.set(key,a);if(a.count>15)fail('Muitas tentativas. Aguarde 15 minutos.',429);
-    const u=store.read().users.find(u=>u.email===String(body.email).toLowerCase().trim()&&u.active);if(typeof body.password!=='string'||body.password.length>128)fail('Credenciais inválidas.',401);const hash=await scrypt(body.password,u?.salt||'invalid',64);if(!u||!u.hash||!timingSafeEqual(hash,Buffer.from(u.hash,'hex')))fail('E-mail ou senha incorretos.',401);
-    attempts.delete(key);const token=randomBytes(32).toString('hex');sessions.set(token,{userId:u.id,expires:now+28800000});res.setHeader('Set-Cookie',`dentec_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${canonicalOrigin.startsWith('https:')?'; Secure':''}`);send(200,{user:safeUser(u)});return;
+    const key=String(body.email||'').trim().toLowerCase(),now=Date.now();if(!await consumeLoginAttempt(store,key,now))fail('Muitas tentativas para esta conta. Aguarde 15 minutos.',429);
+    const u=(await store.read()).users.find(u=>u.email===String(body.email).toLowerCase().trim()&&u.active);if(typeof body.password!=='string'||body.password.length>128)fail('Credenciais inválidas.',401);const hash=await scrypt(body.password,u?.salt||'invalid',64);if(!u||!u.hash||!timingSafeEqual(hash,Buffer.from(u.hash,'hex')))fail('E-mail ou senha incorretos.',401);
+    const token=randomBytes(32).toString('hex');await sessions.set(token,{userId:u.id,expires:now+28800000});res.setHeader('Set-Cookie',`dentec_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${canonicalOrigin.startsWith('https:')?'; Secure':''}`);send(200,{user:safeUser(u)});return;
    }
    if(!user)fail('Entre com sua conta.',401);
-   if(path==='/api/logout'&&method==='POST'){sessions.delete(token);res.setHeader('Set-Cookie','dentec_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');send(200,{ok:true});return;}
-   if(path==='/api/bootstrap'&&method==='GET'){const db=store.read();send(200,{user:safeUser(user),campuses:db.campuses.filter(c=>user.role==='ADMIN'||c.id===user.campusId),catalogue:db.catalogue,calendars:db.calendars.filter(c=>user.role==='ADMIN'||c.campusId===user.campusId).map(({state,versions,...c})=>({...c,year:state.year,offer:state.offer})),users:user.role==='ADMIN'?db.users.map(safeUser):[]});return;}
-   if(path==='/api/documents'&&method==='GET'){const db=store.read();send(200,{revision:db.catalogue.revision,documents:(db.documents||[]).filter(d=>user.role==='ADMIN'||d.publishedAt).map(documentMetadata)});return;}
-   if(path==='/api/documents'&&method==='POST'){admin();const item=await store.change(db=>registerDocument(db,body,user.id));send(201,item);return;}
+   if(path==='/api/file-mode'&&method==='GET'){send(200,{direct:!!files});return;}
+   if(path==='/api/upload-ticket'&&method==='POST'){
+    if(!files)fail('Envio direto indisponível.',404);
+    const filename=text(body.filename,180);if(!filename.toLowerCase().endsWith('.pdf')||!Number.isInteger(body.size)||body.size<5||body.size>8_000_000)fail('Envie um PDF de até 8 MB.');
+    if(body.purpose==='document')admin();else if(body.purpose==='history')owns((await store.read()).calendars.find(c=>c.id===body.calendarId));else fail('Finalidade inválida.');
+    const ticket={id:randomUUID(),owner:user.id,purpose:body.purpose,calendarId:body.purpose==='history'?body.calendarId:null,filename,size:body.size,expires:Date.now()+3600000};ticket.path='uploads/'+ticket.id+'.pdf';
+    await store.change(db=>{db.uploads=(db.uploads||[]).filter(x=>x.expires>Date.now());if(db.uploads.filter(x=>x.owner===user.id).length>=3)fail('Conclua os envios pendentes ou aguarde uma hora.',429);db.uploads.push(ticket);});
+    send(201,{id:ticket.id,url:await files.uploadUrl(ticket.path)});return;
+   }
+   let uploaded=null;
+   if(body.uploadId){
+    if(!files)fail('Envio direto indisponível.');
+    const historyTarget=path.match(/^\/api\/calendars\/([\w-]+)\/history$/);
+    if(path==='/api/documents'&&method==='POST')admin();else if(historyTarget&&method==='POST')owns((await store.read()).calendars.find(c=>c.id===historyTarget[1]));else fail('Destino de arquivo inválido.');
+    uploaded=(await store.read()).uploads?.find(x=>x.id===body.uploadId&&x.owner===user.id&&x.expires>Date.now());
+    if(!uploaded||uploaded.filename!==body.filename||uploaded.purpose!==(historyTarget?'history':'document')||(historyTarget&&uploaded.calendarId!==historyTarget[1]))fail('Envio expirado ou incompatível.');
+    const bytes=await files.read(uploaded.path);if(bytes.length!==uploaded.size||bytes.subarray(0,5).toString()!=='%PDF-')fail('Arquivo inválido.');body.data=bytes.toString('base64');
+   }
+   const attachFile=(db,item)=>{if(!uploaded)return;const index=(db.uploads||[]).findIndex(x=>x.id===uploaded.id&&x.owner===user.id&&x.expires>Date.now());if(index<0)fail('Envio já utilizado ou expirado.',409);delete item.data;item.objectKey=uploaded.path;db.uploads.splice(index,1);};
+   const download=async(item)=>{if(!files||!item.objectKey)return false;const url=await files.signed(item.objectKey,item.filename);res.writeHead(302,{Location:url,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end();return true;};
+   if(path==='/api/logout'&&method==='POST'){await sessions.delete(token);res.setHeader('Set-Cookie','dentec_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');send(200,{ok:true});return;}
+   if(path==='/api/bootstrap'&&method==='GET'){const db=(await store.read());send(200,{user:safeUser(user),campuses:db.campuses.filter(c=>user.role==='ADMIN'||c.id===user.campusId),catalogue:db.catalogue,calendars:db.calendars.filter(c=>user.role==='ADMIN'||c.campusId===user.campusId).map(({state,versions,...c})=>({...c,year:state.year,offer:state.offer})),users:user.role==='ADMIN'?db.users.map(safeUser):[]});return;}
+   if(path==='/api/documents'&&method==='GET'){const db=(await store.read());send(200,{revision:db.catalogue.revision,documents:(db.documents||[]).filter(d=>user.role==='ADMIN'||d.publishedAt).map(documentMetadata)});return;}
+   if(path==='/api/documents'&&method==='POST'){admin();const item=await store.change(db=>{const metadata=registerDocument(db,body,user.id);attachFile(db,db.documents.find(d=>d.id===metadata.id));return metadata;});send(201,item);return;}
    const documentMatch=path.match(/^\/api\/documents\/([\w-]+)(?:\/(status))?$/);
    if(documentMatch){
     if(documentMatch[2]==='status'&&method==='POST'){admin();const item=await store.change(db=>setDocumentStatus(db,documentMatch[1],body,user.id));send(200,item);return;}
-    if(!documentMatch[2]&&method==='GET'){const d=(store.read().documents||[]).find(d=>d.id===documentMatch[1]&&(user.role==='ADMIN'||d.publishedAt));if(!d)fail('Documento não encontrado.',404);res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(d.filename),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(Buffer.from(d.data,'base64'));return;}
+    if(!documentMatch[2]&&method==='GET'){const d=((await store.read()).documents||[]).find(d=>d.id===documentMatch[1]&&(user.role==='ADMIN'||d.publishedAt));if(!d)fail('Documento não encontrado.',404);if(await download(d))return;res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(d.filename),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(Buffer.from(d.data,'base64'));return;}
    }
    if(path==='/api/campuses'&&method==='POST'){admin();const c={id:randomUUID(),name:text(body.name,120)};await store.change(db=>{if(db.campuses.some(x=>x.name.toLowerCase()===c.name.toLowerCase()))fail('Unidade já cadastrada.',409);db.campuses.push(c);audit(db,'CREATE_CAMPUS',c.id);});send(201,c);return;}
    if(path==='/api/users'&&method==='POST'){admin();const role=body.role===undefined?'CAMPUS':body.role;if(!['ADMIN','CAMPUS'].includes(role))fail('Perfil inválido.');const loginMethod=body.loginMethod||'local';if(!['local','google','invite'].includes(loginMethod))fail('Forma de acesso inválida.');const mail=email(body.email),name=text(body.name),credentials=loginMethod==='local'?await password(body.password):{};const created=await store.change(db=>{if(role==='CAMPUS'&&!db.campuses.some(c=>c.id===body.campusId))fail('Campus inválido.');if(db.users.some(u=>u.email===mail))fail('E-mail já cadastrado.',409);const u={id:randomUUID(),name,email:mail,role,campusId:role==='ADMIN'?null:body.campusId,loginMethod,active:loginMethod!=='invite',...credentials};db.users.push(u);audit(db,'CREATE_USER',u.id);if(loginMethod==='invite'){const invitation=issueInvitation(db,u.id,user.id);return {...safeUser(u),inviteUrl:canonicalOrigin+'/ativar#token='+invitation.token};}return safeUser(u);});send(201,created);return;}
@@ -97,7 +118,7 @@ export async function createApp({directory,setupCode=randomBytes(16).toString('h
    }
    const reviewMatch=path.match(/^\/api\/reviews\/([\w-]+)(?:\/(export))?$/);
    if(reviewMatch){
-    admin();const id=reviewMatch[1],db=store.read(),record=owns(db.calendars.find(c=>c.id===id));
+    admin();const id=reviewMatch[1],db=(await store.read()),record=owns(db.calendars.find(c=>c.id===id));
     if(reviewMatch[2]==='export'&&method==='POST'){
      const saved=(db.reviews||[]).find(r=>r.calendarId===id);
      if(!saved)fail('Salve a análise inicial ou a revisão antes de exportar.',409);
@@ -122,18 +143,19 @@ export async function createApp({directory,setupCode=randomBytes(16).toString('h
     }
    }
    const match=path.match(/^\/api\/calendars\/([\w-]+)(?:\/(history|pdf))?$/);
-   if(match){const id=match[1],db=store.read(),record=owns(db.calendars.find(c=>c.id===id));
+   if(match){const id=match[1],db=(await store.read()),record=owns(db.calendars.find(c=>c.id===id));
     if(match[2]==='pdf'&&method==='POST'){
      if(body.version!==record.version||body.catalogueRevision!==db.catalogue.revision||record.catalogueRevision!==db.catalogue.revision)fail('Salve a versão atual com a base institucional atualizada antes de baixar.',409);
      const pdf=await pdfRenderer({...record,currentCatalogueRevision:db.catalogue.revision},[...record.institutionalSnapshot,...record.state.events]);
+     if(files&&pdf.length>4_000_000){const key='exports/'+randomUUID()+'.pdf';await files.write(key,pdf);await download({objectKey:key,filename:`calendario-${record.state.year}-v${record.version}.pdf`});return;}
      res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="calendario-${record.state.year}-v${record.version}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(pdf);return;
     }
     if(!match[2]&&method==='GET'){send(200,{...record,versions:record.versions.map(v=>({version:v.version,at:v.at,catalogueRevision:v.catalogueRevision})),institutionalEvents:inheritedEvents(db.catalogue,record.state.year,record.state.offer),currentCatalogueRevision:db.catalogue.revision,currentDocuments:documentSnapshot(db,record.state.year),histories:db.histories.filter(h=>h.calendarId===id).map(({data,...h})=>h)});return;}
     if(!match[2]&&method==='PUT'){const state=normalize(body.state);if(state.year!==record.state.year||state.offer!==record.state.offer)fail('Ano e oferta não podem mudar neste registro.');state.campus=record.state.campus;const saved=await store.change(db=>{const c=owns(db.calendars.find(c=>c.id===id));if(c.version!==body.version)fail('Há versão mais recente. Reabra o calendário.',409);if(body.catalogueRevision!==db.catalogue.revision)fail('A base institucional mudou. Reabra para incorporar as alterações.',409);c.versions.push({version:c.version,state:c.state,at:c.updatedAt,catalogueRevision:c.catalogueRevision,institutionalEvents:c.institutionalSnapshot,documentSnapshot:c.documentSnapshot||[]});c.state=state;c.documentSnapshot=documentSnapshot(db,state.year);c.version++;c.catalogueRevision=db.catalogue.revision;c.institutionalSnapshot=inheritedEvents(db.catalogue,state.year,state.offer);c.updatedAt=new Date().toISOString();audit(db,'SAVE_CALENDAR',id);return {version:c.version};});send(200,saved);return;}
-    if(match[2]==='history'&&method==='POST'){if(Number(body.year)!==record.state.year-1)fail('Informe o ano anterior ao calendário em elaboração.');const filename=text(body.filename,180);if(!filename.toLowerCase().endsWith('.pdf')||typeof body.data!=='string')fail('Envie um PDF.');const file=Buffer.from(body.data,'base64');if(file.length>8_000_000||file.subarray(0,5).toString()!=='%PDF-')fail('PDF inválido ou maior que 8 MB.');const h={id:randomUUID(),calendarId:id,campusId:record.campusId,year:Number(body.year),offer:record.state.offer,filename,data:file.toString('base64'),hash:createHash('sha256').update(file).digest('hex'),notes:String(body.notes||'').slice(0,5000),createdAt:new Date().toISOString()};await store.change(db=>{db.histories.push(h);audit(db,'UPLOAD_HISTORY',h.id);});send(201,{id:h.id});return;}
+    if(match[2]==='history'&&method==='POST'){if(Number(body.year)!==record.state.year-1)fail('Informe o ano anterior ao calendário em elaboração.');const filename=text(body.filename,180);if(!filename.toLowerCase().endsWith('.pdf')||typeof body.data!=='string')fail('Envie um PDF.');const file=Buffer.from(body.data,'base64');if(file.length>8_000_000||file.subarray(0,5).toString()!=='%PDF-')fail('PDF inválido ou maior que 8 MB.');const h={id:randomUUID(),calendarId:id,campusId:record.campusId,year:Number(body.year),offer:record.state.offer,filename,data:file.toString('base64'),hash:createHash('sha256').update(file).digest('hex'),notes:String(body.notes||'').slice(0,5000),createdAt:new Date().toISOString()};await store.change(db=>{attachFile(db,h);db.histories.push(h);audit(db,'UPLOAD_HISTORY',h.id);});send(201,{id:h.id});return;}
    }
-   const history=path.match(/^\/api\/history\/([\w-]+)$/);if(history&&method==='GET'){const h=owns(store.read().histories.find(h=>h.id===history[1]));res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(h.filename),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(Buffer.from(h.data,'base64'));return;}
+   const history=path.match(/^\/api\/history\/([\w-]+)$/);if(history&&method==='GET'){const h=owns((await store.read()).histories.find(h=>h.id===history[1]));if(await download(h))return;res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(h.filename),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(Buffer.from(h.data,'base64'));return;}
    fail('Não encontrado.',404);
   }catch(e){send(e.status||400,{error:e.status||e instanceof RangeError?e.message:'Não foi possível concluir a operação.'});}
- });return {server,setupCode,store};
+ };const server=http.createServer(handle);const app={server,setupCode,store,handle};return app;
 }

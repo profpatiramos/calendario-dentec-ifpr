@@ -22,3 +22,15 @@ Referências oficiais consultadas:
 - https://vercel.com/docs/functions/limitations
 - https://vercel.com/docs/functions/runtimes/node-js
 - https://vercel.com/docs/storage
+
+
+## Implementação em preparação
+A branch `prepara-vercel` acrescenta PostgreSQL privado com atualizações transacionais, sessões com tokens armazenados somente como hash, limite compartilhado por conta nas tentativas de login, upload direto para bucket privado Supabase e geração de PDF com Chromium para Linux. A estrutura JSON versionada é mantida em uma linha PostgreSQL nesta transição; isso limita a escalabilidade e deve evoluir para tabelas por entidade antes de carga institucional elevada.
+
+Variáveis em Production: POSTGRES_URL, NEXT_PUBLIC_SUPABASE_URL (ou SUPABASE_URL), SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY), DENTEC_SETUP_EMAIL e DENTEC_SETUP_CODE (segredo de pelo menos 32 caracteres). O e-mail inicial precisa ser institucional. Sem a configuração completa, o servidor responde 503 e não permite criar contas. As chaves fornecidas pela integração permanecem somente no servidor. Login Google permanece desativado na Vercel; senha e convite são os meios previstos.
+
+O bucket `dentec-private` é criado como privado. Uploads recebem autorização temporária vinculada ao usuário e ao destino; o conteúdo PDF é verificado antes de registrar o documento. Downloads são autorizados no servidor e usam links de um minuto. Não há acesso público ao banco via API Supabase: o estado fica no schema privado `dentec_private`, sem permissões PUBLIC e com RLS habilitado.
+
+Não houve importação dos dados locais. O banco online começa vazio. A primeira administração deve ser criada pela responsável após configurar o segredo de instalação. Backups, migração dos dados locais, limpeza periódica de uploads não concluídos e PDFs grandes de exportação ainda precisam de procedimento operacional. Não há promessa de disponibilidade permanente no plano gratuito.
+
+Testes locais não executam PostgreSQL real nem Chromium Linux. O workflow GitHub usa PostgreSQL 16 descartável e executa também o PDF em Linux. Publicação definitiva exige essas verificações e teste no ambiente hospedado.
