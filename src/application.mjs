@@ -66,7 +66,7 @@ export async function createApp({directory,setupEmail=null,files=null,store:prov
      res.writeHead(303,{'Location':'/','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':[clear,`dentec_session=${newToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${canonicalOrigin.startsWith('https:')?'; Secure':''}`]});res.end();
     }catch{res.writeHead(303,{'Location':'/?google_error=1','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();}return;
    }
-   if(path==='/api/status'&&method==='GET'){send(200,{setupRequired:!(await store.read()).users.length,googleEnabled:googleAuth.enabled,user:user?safeUser(user):null});return;}
+   if(path==='/api/status'&&method==='GET'){send(200,{setupRequired:!(await store.read()).users.length,hosted:!!files,googleEnabled:googleAuth.enabled,user:user?safeUser(user):null});return;}
    if(path==='/api/setup'&&method==='POST'){if(body.code!==setupCode||(setupEmail&&String(body.email).trim().toLowerCase()!==setupEmail))fail('Código ou e-mail de instalação incorreto.',403);const credentials=await password(body.password),mail=email(body.email),name=text(body.name);await store.change(db=>{if(db.users.length)fail('Conta ADMIN já criada.',409);db.users.push({id:randomUUID(),name,email:mail,role:'ADMIN',campusId:null,active:true,...credentials});audit(db,'CREATE_ADMIN',mail);});send(201,{ok:true});return;}
    if(path==='/api/login'&&method==='POST'){
     const key=String(body.email||'').trim().toLowerCase(),now=Date.now();if(!await consumeLoginAttempt(store,key,now))fail('Muitas tentativas para esta conta. Aguarde 15 minutos.',429);
