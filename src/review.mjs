@@ -1,3 +1,4 @@
+import {calendarModalities} from './modalities.mjs';
 import {calendarResult} from './pdf.mjs';
 export const reviewSource={id:'SEI 3959640',year:2026,title:'Parecer técnico-pedagógico de calendário acadêmico e administrativo',norm:'Resolução Consup/IFPR 259, de 27/11/2025'};
 const rows=[
@@ -37,7 +38,7 @@ export const reviewCriteria=rows.map(([id,title,page,item,pattern])=>({id,title,
 export function reviewSupport(record,events){
  let result=null,error=null;try{result=calendarResult(record.state,events);}catch{error='Contagem indisponível: confira semana letiva, períodos e evidências no editor.';}
  const sameYear=record.state.year===reviewSource.year;
- return {source:reviewSource,sameYear,officialApproval:false,calendar:{id:record.id,name:record.name,campus:record.state.campus,year:record.state.year,offer:record.state.offer,regime:record.state.regime,version:record.version},criteria:reviewCriteria.map(c=>{
+ return {source:reviewSource,sameYear,officialApproval:false,calendar:{id:record.id,name:record.name,campus:record.state.campus,year:record.state.year,offer:record.state.offer,modalities:calendarModalities(record.state),regime:record.state.regime,version:record.version},criteria:reviewCriteria.map(c=>{
   let signal='Conferência documental necessária.',candidates=[];
   if(c.pattern){const pattern=new RegExp(c.pattern);candidates=events.filter(e=>pattern.test(normalize(e.name+' '+(e.category||'')))).map(e=>({id:e.id,name:e.name,start:e.start,end:e.end,evidence:e.evidence}));signal=candidates.length?`${candidates.length} registro(s) possivelmente relacionado(s). A presença não comprova atendimento.`:'Nenhum registro localizado por nome/categoria. Isso não comprova ausência no processo.';}
   if(c.id==='annual')signal=result?`${result.total} dias calculados; ${result.total>=200?'alcança':'não alcança'} a referência de 200 do parecer. Carga horária do PPC exige análise.`:error;
@@ -47,8 +48,8 @@ export function reviewSupport(record,events){
    const starts=record.state.periods.map(p=>p.start).sort(),ends=record.state.periods.map(p=>p.end).sort();
    signal=!sameYear?'Datas de 2026 não aplicadas. Consulte a resolução do ano do calendário.':!starts.length?'Nenhum período cadastrado.':`${starts[0]} a ${ends.at(-1)}. ${starts[0]>='2026-02-04'&&starts[0]<='2026-02-28'&&ends.at(-1)<='2026-12-18'?'Dentro da janela indicada no parecer.':'Fora da janela indicada no parecer; revisar.'}`;
   }
-  if(['V','VII'].includes(c.id)&&record.state.offer==='integrado')signal+=' O texto do parecer menciona subsequentes e graduação: confira se não se aplica.';
-  if(['XXIV','XXV'].includes(c.id)&&record.state.offer==='graduacao')signal+=' O parecer de 2026 considera esse evento facultativo para graduação.';
+  if(['V','VII'].includes(c.id)&&calendarModalities(record.state).every(m=>m==='integrado'))signal+=' O texto do parecer menciona subsequentes e graduação: confira se não se aplica.';
+  if(['XXIV','XXV'].includes(c.id)&&calendarModalities(record.state).every(m=>m==='graduacao'))signal+=' O parecer de 2026 considera esse evento facultativo para graduação.';
   if(['IV','XXII','XXIII'].includes(c.id))signal+=' A quantidade de dias/horas não está comprovada pela identificação do evento.';
   if(!sameYear)signal+=' Critério extraído de parecer de 2026; confirme a exigência na norma vigente.';
   let status='PENDENTE',finding=candidates.length?'REGISTROS_LOCALIZADOS':'CONFERENCIA_NECESSARIA';

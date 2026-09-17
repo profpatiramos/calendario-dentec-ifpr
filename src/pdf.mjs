@@ -5,11 +5,9 @@ import {pathToFileURL} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {proensLayout} from '../web/print.mjs';
-import {countCalendar} from './calendar.mjs';
 const run=promisify(execFile);
-export function calendarResult(s,events){
- return countCalendar({year:s.year,offerId:s.offer,periods:s.periods,weekPattern:{weekdays:s.weekdays,confirmed:s.weekConfirmed,evidenceId:s.weekEvidence},inclusions:events.filter(e=>e.kind==='include').map(e=>({...e,offerIds:[s.offer],confirmed:true,evidenceId:e.evidence})),exclusions:events.filter(e=>e.kind==='exclude').map(e=>({...e,offerIds:[s.offer],confirmed:true,evidenceId:e.evidence})),thresholds:{annual:s.year===2027?200:null,byPeriod:Object.fromEntries(s.periods.map(p=>[p.id,s.year===2027&&s.regime==='semestral'?100:null]))}});
-}
+export {evaluateCalendar as calendarResult} from './evaluation.mjs';
+import {evaluateCalendar as calendarResult} from './evaluation.mjs';
 export async function renderCalendarPdf(record,events){
  const candidates=[process.env.DENTEC_PDF_BROWSER,'C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium','/usr/bin/google-chrome'].filter(Boolean);
  let browser;for(const candidate of candidates){try{await access(candidate);browser=candidate;break;}catch{}}
