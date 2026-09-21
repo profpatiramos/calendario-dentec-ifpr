@@ -1,3 +1,4 @@
+import {retryingResource} from './src/retrying-resource.mjs';
 import {fileURLToPath} from 'node:url';
 import http from 'node:http';
 import {createApp} from './src/application.mjs';
@@ -22,7 +23,8 @@ async function prepare(){
  }
  startupStage='application';return createApp(options);
 }
-const preparing=prepare();preparing.catch(e=>{const m=String(e.message||'');const category=/timeout|timed out/i.test(m)?'TIMEOUT':/tenant|user not found/i.test(m)?'TENANT':/password|authentication/i.test(m)?'AUTH':/certificate|ssl/i.test(m)?'TLS':/terminated/i.test(m)?'TERMINATED':/invalid.*url/i.test(m)?'URL':/connection/i.test(m)?'CONNECTION':'OTHER';console.error('DENTEC_STARTUP',startupStage,/^[A-Z0-9_]{2,60}$/.test(String(e.code))?e.code:category);});
-const server=http.createServer(async(req,res)=>{try{const app=await preparing;await app.handle(req,res);}catch{res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:'Sistema em configuração. Contate a administração.'}));}});
+const getApp=retryingResource(prepare,{onError:e=>{const m=String(e.message||'');const category=/timeout|timed out/i.test(m)?'TIMEOUT':/tenant|user not found/i.test(m)?'TENANT':/password|authentication/i.test(m)?'AUTH':/certificate|ssl/i.test(m)?'TLS':/terminated/i.test(m)?'TERMINATED':/invalid.*url/i.test(m)?'URL':/connection/i.test(m)?'CONNECTION':'OTHER';console.error('DENTEC_STARTUP',startupStage,/^[A-Z0-9_]{2,60}$/.test(String(e.code))?e.code:category);}});
+getApp().catch(()=>{});
+const server=http.createServer(async(req,res)=>{try{const app=await getApp();await app.handle(req,res);}catch{res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:'Sistema em configuração. Contate a administração.'}));}});
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'A porta está ocupada. Encerre a versão anterior com Ctrl+C.':'Não foi possível iniciar o servidor.');process.exitCode=1;});
-server.listen(port,hosted?'0.0.0.0':'127.0.0.1',async()=>{if(!hosted){const app=await preparing;app.localPort=port;console.log('DENTEC/PROENS — abra http://127.0.0.1:'+port);if(!(await app.store.read()).users.length)console.log('Código para criar a primeira conta ADMIN (uso local): '+app.setupCode);}});
+server.listen(port,hosted?'0.0.0.0':'127.0.0.1',async()=>{if(!hosted){const app=await getApp();app.localPort=port;console.log('DENTEC/PROENS — abra http://127.0.0.1:'+port);if(!(await app.store.read()).users.length)console.log('Código para criar a primeira conta ADMIN (uso local): '+app.setupCode);}});
