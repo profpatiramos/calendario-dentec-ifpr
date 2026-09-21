@@ -1,3 +1,5 @@
+import {teacherVacations} from '/teacher-vacations.mjs';
+import {regimeLabels} from '/calendar-label.mjs';
 import {evaluateCalendar} from '/evaluation.mjs';
 import {calendarModalities,modalityLabels} from '/modalities.mjs';
 import {activityChecklist} from '/obligations.mjs';
@@ -16,13 +18,16 @@ async function api(path,method='GET',body){const r=await fetch(path,{method,head
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const offers={posgraduacao:'Pós-graduação',tecnico:'Cursos técnicos',integrado:'Técnico integrado',subsequente:'Técnico subsequente',graduacao:'Graduação'};
 const dateLabel=s=>s.split('-').reverse().join('/');
-const message=(text,error=false)=>{$('message').textContent=text;$('message').className=error?'error':'';};
+const message=(text,error=false)=>{$('message').textContent=new Date().toLocaleTimeString('pt-BR')+' — '+text;$('message').className=error?'error':'';};
 function act(fn){try{fn();}catch(e){message(e.message,true);}}
-function identified(){if(!state.campus || !state.offer)throw Error('Aplique a identificação do campus e da oferta antes de continuar.');}
+function identified(){if(!state.campus || !state.offer)throw Error('Abra um calendário com campus e forma de oferta/nível cadastrados antes de continuar.');}
 function interval(start,end){datesBetween(start,end);if(Number(start.slice(0,4))!==state.year || Number(end.slice(0,4))!==state.year)throw Error('As datas devem pertencer ao ano selecionado.');}
-function engineInput(){return {year:state.year,offerId:state.offer,periods:state.periods,weekPattern:{weekdays:state.weekdays,confirmed:state.weekConfirmed,evidenceId:state.weekEvidence},inclusions:allEvents().filter(e=>e.kind==='include').map(e=>({...e,offerIds:[state.offer],confirmed:true,evidenceId:e.evidence})),exclusions:allEvents().filter(e=>e.kind==='exclude').map(e=>({...e,offerIds:[state.offer],confirmed:true,evidenceId:e.evidence})),thresholds:{annual:state.year===2027?200:null,byPeriod:Object.fromEntries(state.periods.map(p=>[p.id,state.year===2027&&state.regime==='semestral'?100:null]))}};}
+function engineInput(){return {year:state.year,offerId:state.offer,periods:state.periods,weekPattern:{weekdays:state.weekdays,confirmed:state.weekConfirmed,evidenceId:state.weekEvidence},inclusions:allEvents().filter(e=>e.kind==='include').map(e=>({...e,offerIds:[state.offer],confirmed:true,evidenceId:e.evidence})),exclusions:allEvents().filter(e=>e.kind==='exclude').map(e=>({...e,offerIds:[state.offer],confirmed:true,evidenceId:e.evidence})),thresholds:{annual:state.year===2027?200:null,byPeriod:Object.fromEntries(state.periods.map(p=>[p.id,state.year===2027&&state.regime!=='anual'?100:null]))}};}
 function render(){
- $('selected-modalities').textContent='Modalidades: '+calendarModalities(state).filter(Boolean).map(m=>modalityLabels[m]).join(' + ');
+ $('regime-summary').textContent='Organização: '+regimeLabels[state.regime];
+ $('vacation-january').textContent=`Janeiro: 02/01/${state.year} a 31/01/${state.year} — 30 dias.`;$('vacation-july').min=state.year+'-07-01';$('vacation-july').max=state.year+'-07-17';
+ if(dirty)message('Alteração aplicada ao rascunho. Use Salvar no sistema para registrar a versão.');
+ $('selected-modalities').textContent='Forma de oferta/nível: '+calendarModalities(state).filter(Boolean).map(m=>modalityLabels[m]).join(' + ');
  const requirements=activityChecklist(state);
  $('assessment-stages').value=state.assessmentStages||'';
  $('event-modalities').innerHTML=calendarModalities(state).filter(Boolean).map(m=>`<label class="check"><input type="checkbox" name="event-modality" value="${m}" checked>${escape(modalityLabels[m])}</label>`).join('');
@@ -35,10 +40,10 @@ function render(){
   if(!state.campus||!state.offer)issues.push(['Pendente','Identificação','Informe campus e oferta.']);
   if(!state.weekConfirmed)issues.push(['Pendente','Semana letiva','Registre e confirme os dias regulares e a referência da decisão.']);
   if(!state.periods.length)issues.push(['Pendente','Períodos letivos','Cadastre pelo menos um período com início e término.']);
-  if(state.regime==='semestral'&&state.periods.length!==2)issues.push(['Pendente','Organização semestral','Cadastre exatamente dois semestres para a conferência anual.']);
+  if(state.regime!=='anual'&&state.periods.length!==2)issues.push(['Pendente','Organização semestral','Cadastre exatamente dois semestres para a conferência anual.']);
   if(state.campus&&state.offer&&state.weekConfirmed&&state.periods.length){try{result=evaluateCalendar(state,allEvents());}catch(e){issues.push(['Corrigir','Dados do calendário',e.message]);}}
   if(result){
-    for(const [modality,detail] of Object.entries(result.byModality))for(const c of detail.checks){if(c.scope!=='annual'&&state.regime!=='semestral')continue;const name=c.scope==='annual'?'Total anual':state.periods.find(p=>p.id===c.scope).name;issues.push([c.status==='MET'?'Atendido':c.status==='NOT_MET'?'Corrigir':'Pendente',modalityLabels[modality]+' — '+name,c.expected===null?'Não há mínimo normativo configurado para este escopo.':`${c.observed} de ${c.expected} dias mínimos. ${state.year===2027?'Resolução 2027, art. 4º.':''}`]);}
+    for(const [modality,detail] of Object.entries(result.byModality))for(const c of detail.checks){if(c.scope!=='annual'&&state.regime==='anual')continue;const name=c.scope==='annual'?'Total anual':state.periods.find(p=>p.id===c.scope).name;issues.push([c.status==='MET'?'Atendido':c.status==='NOT_MET'?'Corrigir':'Pendente',modalityLabels[modality]+' — '+name,c.expected===null?'Não há mínimo normativo configurado para este escopo.':`${c.observed} de ${c.expected} dias mínimos. ${state.year===2027?'Resolução 2027, art. 4º.':''}`]);}
     for(const c of result.conflicts)issues.push(['Conflito',dateLabel(c.date),'Há inclusão e exclusão na mesma data. O dia foi excluído da contagem até a resolução do conflito.']);
   }
   issues.push(['Pendente','Feriados municipais e decisões locais','Confira a legislação municipal. Os itens nacionais e institucionais vêm da base ADMIN; os locais precisam ser registrados com fonte.'],['Pendente','Parecer e demais requisitos','As datas centrais e metas de dias estão incorporadas. O checklist completo, a sequência de atividades e as verificações humanas ainda não estão automatizados.'],['Pendente','Carga horária e apreciação institucional','Horas, atividades pedagógicas, atas e demais requisitos precisam de análise documental. Não há aprovação oficial.']);
@@ -55,13 +60,8 @@ function render(){
   $('months').innerHTML=proensLayout(state,allEvents(),result,record);
   renderSaturdays();
 }
-function sync(){if(['integrado','subsequente','posgraduacao'].includes(state.offer)&&!Array.from($('offer').options).some(o=>o.value===state.offer))$('offer').add(new Option(modalityLabels[state.offer],state.offer));for(const key of ['campus','year','offer','regime'])$(key).value=state[key];document.querySelectorAll('#weekdays input').forEach(el=>el.checked=state.weekdays.includes(Number(el.value)));$('week-evidence').value=state.weekEvidence;$('week-confirmed').checked=state.weekConfirmed;}
-$('identity').addEventListener('submit',e=>{e.preventDefault();act(()=>{
-  const year=Number($('year').value), campus=$('campus').value.trim(), offer=$('offer').value;
-  if(!campus||!offers[offer]||!Number.isInteger(year)||year<1900||year>9999)throw Error('Confira campus, ano e oferta.');
-  if((state.periods.length||state.events.length)&&(year!==state.year||offer!==state.offer||campus!==state.campus))throw Error('Para preservar as decisões registradas, remova os períodos e eventos antes de mudar campus, ano ou oferta. Baixe o rascunho atual primeiro.');
-  Object.assign(state,{campus,year,offer,regime:$('regime').value});dirty=true;render();message('Identificação aplicada.');
-});});
+function sync(){$('vacation-july').value=state.teacherVacations?.julyStart||'';$('vacation-evidence').value=state.teacherVacations?.evidence||'';vacationPreview();if(['integrado','subsequente','posgraduacao'].includes(state.offer)&&!Array.from($('offer').options).some(o=>o.value===state.offer))$('offer').add(new Option(modalityLabels[state.offer],state.offer));for(const key of ['campus','year','offer','regime'])$(key).value=state[key];document.querySelectorAll('#weekdays input').forEach(el=>el.checked=state.weekdays.includes(Number(el.value)));$('week-evidence').value=state.weekEvidence;$('week-confirmed').checked=state.weekConfirmed;}
+$('identity').onsubmit=e=>e.preventDefault();
 $('week-form').addEventListener('submit',e=>{e.preventDefault();act(()=>{
   identified();const weekdays=[...document.querySelectorAll('#weekdays input:checked')].map(el=>Number(el.value));
   if(!weekdays.length)throw Error('Selecione pelo menos um dia regular.');
@@ -78,21 +78,21 @@ $('event-form').addEventListener('submit',e=>{e.preventDefault();act(()=>{
   identified();const start=$('event-start').value,end=$('event-end').value,kind=$('event-kind').value,name=$('event-name').value.trim(),evidence=$('event-evidence').value.trim();interval(start,end);
   if(!name||!evidence)throw Error('Informe descrição e fonte.');
   if(kind==='include'&&datesBetween(start,end).some(date=>!state.periods.some(p=>p.start<=date&&p.end>=date)))throw Error('Inclusões letivas devem estar dentro dos períodos cadastrados.');
-  const modalities=[...document.querySelectorAll('input[name=event-modality]:checked')].map(el=>el.value);if(!modalities.length)throw Error('Selecione ao menos uma modalidade para o evento.');
+  const modalities=[...document.querySelectorAll('input[name=event-modality]:checked')].map(el=>el.value);if(!modalities.length)throw Error('Selecione ao menos uma forma de oferta/nível para o evento.');
   state.events.push({modalities,requirementId:$('event-requirement').value||undefined,id:crypto.randomUUID(),name,start,end,kind,evidence,category:$('event-category').value});dirty=true;e.target.reset();$('event-category').value='recesso';render();message('Evento registrado. Contagem atualizada.');
 });});
 document.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.view){document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==b.dataset.view);document.querySelectorAll('.tab').forEach(t=>{t.classList.toggle('active',t===b);if(t===b)t.setAttribute('aria-current','page');else t.removeAttribute('aria-current');});}
   if(b.dataset.removePeriod){state.periods=state.periods.filter(p=>p.id!==b.dataset.removePeriod);dirty=true;render();message('Período removido. Confira os eventos que dependiam dele.');}
-  if(b.dataset.removeEvent){state.events=state.events.filter(ev=>ev.id!==b.dataset.removeEvent);dirty=true;render();message('Evento removido.');}
+  if(b.dataset.removeEvent){if(['teacher-vacation-january','teacher-vacation-july'].includes(b.dataset.removeEvent)){delete state.teacherVacations;state.events=state.events.filter(ev=>!['teacher-vacation-january','teacher-vacation-july'].includes(ev.id));sync();}state.events=state.events.filter(ev=>ev.id!==b.dataset.removeEvent);dirty=true;render();message('Evento removido.');}
 });
 $('save').onclick=()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`rascunho-calendario-${state.year}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Download solicitado. Guarde o arquivo para continuar depois. Somente dados aplicados aos formulários foram incluídos.');
 };
 $('load').onclick=()=>{if(!dirty||confirm('Abrir outro rascunho substituirá os dados desta sessão. Você já baixou o atual?'))$('file').click();};
 function validateImport(s){
-  if(!s||s.schemaVersion!==1||!Number.isInteger(s.year)||s.year<1900||s.year>9999||!['','posgraduacao','tecnico','integrado','subsequente','graduacao'].includes(s.offer)||!['anual','semestral'].includes(s.regime))throw Error('Formato de rascunho incompatível.');
+  if(!s||s.schemaVersion!==1||!Number.isInteger(s.year)||s.year<1900||s.year>9999||!['','posgraduacao','tecnico','integrado','subsequente','graduacao'].includes(s.offer)||!['anual','semestral','misto'].includes(s.regime))throw Error('Formato de rascunho incompatível.');
   const str=(v,max)=>typeof v==='string'&&v.length<=max;
   if(!str(s.campus,120)||!str(s.weekEvidence,240)||typeof s.weekConfirmed!=='boolean'||!Array.isArray(s.weekdays)||s.weekdays.length>5||new Set(s.weekdays).size!==s.weekdays.length||s.weekdays.some(d=>!Number.isInteger(d)||d<1||d>5))throw Error('Identificação ou semana inválida.');
   if(s.weekConfirmed&&(!s.weekEvidence.trim()||!s.weekdays.length))throw Error('Semana confirmada sem referência ou dias.');
@@ -105,7 +105,7 @@ function validateImport(s){
     if(event&&(!['include','exclude','note'].includes(x.kind)||!str(x.evidence,240)||!x.evidence.trim()))throw Error('Evento sem tipo ou referência válida.');
   }
   for(let i=0;i<s.periods.length;i++)for(let j=i+1;j<s.periods.length;j++)if(s.periods[i].start<=s.periods[j].end&&s.periods[i].end>=s.periods[j].start)throw Error('Rascunho com períodos sobrepostos.');
-  return {schemaVersion:1,campus:s.campus,year:s.year,offer:s.offer,regime:s.regime,weekdays:s.weekdays,weekEvidence:s.weekEvidence,weekConfirmed:s.weekConfirmed,periods:s.periods.map(({id,name,start,end})=>({id,name,start,end})),events:s.events.map(e=>({...e,category:eventCategory(e)}))};
+  return {schemaVersion:1,modalities:s.modalities,assessmentStages:s.assessmentStages,teacherVacations:s.teacherVacations,campus:s.campus,year:s.year,offer:s.offer,regime:s.regime,weekdays:s.weekdays,weekEvidence:s.weekEvidence,weekConfirmed:s.weekConfirmed,periods:s.periods.map(({id,name,start,end})=>({id,name,start,end})),events:s.events.map(e=>({...e,category:eventCategory(e)}))};
 }
 $('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>2_000_000)throw Error('O rascunho excede o limite de 2 MB.');const next=validateImport(JSON.parse(await f.text()));if(record&&(next.year!==record.state.year||next.offer!==record.state.offer||next.campus!==record.state.campus))throw Error('O rascunho deve corresponder ao campus, ano e oferta deste registro.');state=next;dirty=true;sync();render();message('Rascunho importado. Clique em Salvar no sistema para registrar uma versão.');}catch(err){message('Não foi possível abrir: '+err.message,true);}finally{e.target.value='';}};
 $('print').onclick=async()=>{try{if(dirty)throw Error('Salve no sistema antes de imprimir, para identificar corretamente a versão.');const fresh=await api('/api/calendars/'+calendarId);if(fresh.version!==record.version||fresh.currentCatalogueRevision!==record.currentCatalogueRevision)throw Error('O calendário ou a base institucional mudou. Reabra e confira antes de imprimir.');if(fresh.purpose!=='test'&&!fresh.readiness?.ready)throw Error('Impressão definitiva bloqueada. '+(fresh.readiness?.issues||[]).join('\n'));window.print();}catch(e){message(e.message,true);}};
@@ -114,7 +114,7 @@ window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.return
 if(navigator.modelContext?.registerTool)navigator.modelContext.registerTool({name:'read_calendar_summary',description:'Read the local calendar totals and pending checks; never certifies institutional approval.',inputSchema:{type:'object',properties:{}},execute:async()=>({content:[{type:'text',text:JSON.stringify({campus:state.campus,year:state.year,offer:state.offer,total:result?.total??null,officialApproval:false,institutionalValidation:'INCOMPLETE'})}]})});
 async function openRecord(){if(!calendarId){location.href='/';return;}try{record=await api('/api/calendars/'+calendarId);state=record.state;institutional=record.institutionalEvents;sync();for(const key of ['campus','year','offer'])$(key).disabled=true;$('record-heading').textContent=`${record.purpose==='test'?'[TESTE]':'[DEFINITIVO]'} ${record.name} · ${record.courses}${record.classes?' · '+record.classes:''}${record.shifts?' · '+record.shifts:''}`;showHistory();render();}catch(e){message(e.message,true);}}
 function showHistory(){$('history-list').innerHTML=record.histories.length?record.histories.map(h=>`<li><div><strong>${h.year} · ${escape(h.filename)}</strong><small>Oferta: ${escape(h.offer)} · Referência histórica</small><small>${escape(h.notes||'Sem observações registradas.')}</small><a href="/api/history/${escape(h.id)}">Baixar e consultar arquivo do campus</a></div></li>`).join(''):'<li>Nenhum histórico enviado. Você pode continuar sem ele.</li>';}
-$('server-save').onclick=async()=>{try{if(!record)throw Error('Abra um calendário registrado.');const saved=await api('/api/calendars/'+calendarId,'PUT',{version:record.version,catalogueRevision:record.currentCatalogueRevision,state});record.version=saved.version;record.catalogueRevision=record.currentCatalogueRevision;dirty=false;record=await api('/api/calendars/'+calendarId);render();message(`Versão ${saved.version} salva no sistema.`);}catch(e){message(e.message,true);}};
+$('server-save').onclick=async()=>{try{if(!record)throw Error('Abra um calendário registrado.');const saved=await api('/api/calendars/'+calendarId,'PUT',{version:record.version,catalogueRevision:record.currentCatalogueRevision,state});record.version=saved.version;record.catalogueRevision=record.currentCatalogueRevision;dirty=false;record=await api('/api/calendars/'+calendarId);state=record.state;sync();render();message(`Versão ${saved.version} salva no sistema em ${new Date(record.updatedAt).toLocaleString('pt-BR')}.`);}catch(e){message(e.message,true);}};
 $('history-form').onsubmit=async e=>{e.preventDefault();try{const file=$('history-file').files[0];if(!file||file.size>8_000_000)throw Error('Envie um PDF de até 8 MB.');const payload=await filePayload(file,'history',calendarId);await api('/api/calendars/'+calendarId+'/history','POST',{filename:file.name,year:state.year-1,...payload,notes:$('history-notes').value});const fresh=await api('/api/calendars/'+calendarId);record.histories=fresh.histories;showHistory();e.target.reset();message('Histórico guardado neste campus e oferta. As datas não foram copiadas.');}catch(err){message(err.message,true);}};
 const extra=document.createElement('link');extra.rel='stylesheet';extra.href='/portal.css';document.head.append(extra);const printStyle=document.createElement('link');printStyle.rel='stylesheet';printStyle.href='/proens.css';document.head.append(printStyle);
 const monthNames=Array.from({length:12},(_,m)=>new Date(Date.UTC(2027,m,1)).toLocaleDateString('pt-BR',{month:'long',timeZone:'UTC'}));
@@ -149,7 +149,12 @@ $('download-pdf-top').onclick=()=>$('download-pdf').click();
 openRecord();
 
 $('assessment-stages').onchange=()=>{const value=Number($('assessment-stages').value);if(![2,3,4].includes(value))return;state.assessmentStages=value;const ids=new Set(activityChecklist(state).map(r=>r.id));for(const event of state.events)if(!ids.has(event.requirementId))delete event.requirementId;dirty=true;render();};
-function prepareActivity(id){const item=activityChecklist(state).find(r=>r.id===id);if(!item)return;$('event-requirement').value=id;$('event-name').value=item.name;$('event-category').value=id.startsWith('council')?'conselho':'prazo';$('event-kind').value='note';$('event-start').value='';$('event-end').value='';$('event-evidence').value='';$('event-confirmed').checked=false;$('event-form').scrollIntoView({behavior:'smooth'});$('event-start').focus();}
+function prepareActivity(id){const item=activityChecklist(state).find(r=>r.id===id);if(!item)return;$('event-requirement').value=id;$('event-name').value=item.name;$('event-category').value=id.includes('council')?'conselho':id.startsWith('stage-')?'limite':'prazo';$('event-kind').value='note';$('event-start').value='';$('event-end').value='';$('event-evidence').value='';$('event-confirmed').checked=false;$('event-form').scrollIntoView({behavior:'smooth'});$('event-start').focus();}
 $('event-requirement').onchange=()=>prepareActivity($('event-requirement').value);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-prepare-activity]');if(b)prepareActivity(b.dataset.prepareActivity);});
 document.addEventListener('change',e=>{if(!e.target.dataset.linkActivity)return;const event=state.events.find(x=>x.id===e.target.dataset.linkActivity);if(event){event.requirementId=e.target.value||undefined;dirty=true;render();}});
+
+function vacationPreview(){try{const v=teacherVacations(state.year,$('vacation-july').value,$('vacation-evidence').value||'Prévia');$('vacation-preview').textContent=`Julho: ${dateLabel(v.julyStart)} a ${dateLabel(v.julyEnd)} — 15 dias. Total: ${v.total} dias (30 + 15).`;}catch{$('vacation-preview').textContent='Escolha o início em julho, entre os dias 1 e 17, para calcular o término e o total de 45 dias.';}}
+$('vacation-july').onchange=vacationPreview;
+$('vacation-form').onsubmit=e=>{e.preventDefault();act(()=>{const vacation=teacherVacations(state.year,$('vacation-july').value,$('vacation-evidence').value);state.teacherVacations={julyStart:vacation.julyStart,evidence:$('vacation-evidence').value.trim()};state.events=state.events.filter(e=>!['teacher-vacation-january','teacher-vacation-july'].includes(e.id)).concat(vacation.events);dirty=true;render();vacationPreview();message('Férias docentes aplicadas: 30 dias em janeiro + 15 dias em julho = 45 dias. Salve no sistema.');});};
+document.addEventListener('input',e=>{if(e.target.closest('form'))message('Formulário alterado. Aplique a alteração no botão correspondente e depois salve no sistema.');});

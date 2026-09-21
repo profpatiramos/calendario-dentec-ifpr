@@ -31,8 +31,8 @@ export function releaseReadiness(record,db){
  for(const modality of calendarModalities(record.state)){
  const eventFor=id=>events.find(e=>e.requirementId===id&&appliesTo(e,modality));
  for(let n=1;n<=(record.state.assessmentStages||0);n++){
-  const start=eventFor('stage-start-'+n),end=eventFor('stage-end-'+n),results=eventFor('results-'+n),council=eventFor('council-'+n);
-  if(start&&end&&start.start>end.start)issues.push(`${n}ª etapa: término anterior ao início.`);
+  const start=eventFor('stage-'+n),end=eventFor('stage-'+n),results=eventFor('results-'+n),council=eventFor('council-'+n);
+  if(start&&end&&start.start>end.end)issues.push(`${n}ª etapa: término anterior ao início.`);
   if(end&&results&&results.end<end.end)issues.push(`${n}ª etapa: prazo de lançamento de resultados anterior ao término.`);
   if(results&&council&&council.start<results.end)issues.push(`${n}ª etapa: conselho anterior ao prazo de lançamento dos resultados.`);
  }
@@ -45,9 +45,9 @@ export function releaseReadiness(record,db){
  try{
   const result=calendarResult(record.state,[...record.institutionalSnapshot,...record.state.events]);
   if(!record.state.periods.length)issues.push('Cadastre os períodos letivos.');
-  if(record.state.regime==='semestral'&&record.state.periods.length!==2)issues.push('Cadastre os dois semestres letivos.');
+  if(record.state.regime!=='anual'&&record.state.periods.length!==2)issues.push('Cadastre os dois semestres letivos.');
   for(const [modality,detail] of Object.entries(result.byModality))for(const check of detail.checks){
-   if(check.scope!=='annual'&&record.state.regime!=='semestral')continue;
+   if(check.scope!=='annual'&&record.state.regime==='anual')continue;
    if(check.status!=='MET')issues.push(`${modalityLabels[modality]} — ${check.scope==='annual'?'Total anual':record.state.periods.find(p=>p.id===check.scope)?.name}: mínimo de dias não atendido ou não configurado.`);
   }
   if(Object.values(result.byModality).some(r=>r.conflicts.length))issues.push('Resolva os conflitos entre dias letivos e exclusões.');

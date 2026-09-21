@@ -46,8 +46,9 @@ test('accounts, campus isolation, history, propagation, versioning and persisten
  const adminPanel=(await call('/api/bootstrap','GET',null,admin)).data;assert.equal(adminPanel.campuses.length,27);assert(adminPanel.calendars.some(x=>x.id===c.id));
  assert.equal((await call('/api/calendars','POST',{campusId:other.id,name:'Denied',courses:'Denied',year:2027,offer:'integrado',regime:'anual'},campus)).status,404);
  assert.equal((await call('/api/calendars/'+c.id,'PUT',{version:1,catalogueRevision:1,state:c.state},foreign)).status,404);
- const definitive=(await call('/api/calendars','POST',{campusId:foz.id,name:'Definitive fixture',courses:'Synthetic',year:2027,modalities:['subsequente','graduacao'],regime:'anual',purpose:'definitive'},campus)).data;
- assert.deepEqual(definitive.state.modalities,['subsequente','graduacao']);
+ const definitive=(await call('/api/calendars','POST',{campusId:foz.id,name:'Definitive fixture',courses:'Synthetic',year:2027,modalities:['subsequente','graduacao'],regime:'misto',purpose:'definitive'},campus)).data;
+ assert.deepEqual(definitive.state.modalities,['subsequente','graduacao']);assert.equal(definitive.state.regime,'misto');assert.equal(definitive.name,'Calendário 2027 - Campus Foz do Iguaçu');
+ assert.equal((await call('/api/logs','GET')).status,401);const log=(await call('/api/logs','GET',null,campus)).data;assert(log.entries.every(e=>e.calendar.includes('Foz do Iguaçu')));assert(log.entries.some(e=>e.version===1));
  const blocked=await call('/api/calendars/'+definitive.id+'/pdf','POST',{version:1,catalogueRevision:1},campus);assert.equal(blocked.status,409);assert.match(blocked.data.error,/bloqueada/);assert.equal(rendered,0);
  const reitoria=bootstrap.data.campuses.filter(c=>c.name==='Reitoria');assert.equal(reitoria.length,1);
  const removable=(await call('/api/users','POST',{name:'Remove fixture',email:'remove-fixture@ifpr.edu.br',role:'CAMPUS',campusId:foz.id,loginMethod:'invite'},admin)).data;

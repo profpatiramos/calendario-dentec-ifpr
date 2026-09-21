@@ -1,3 +1,4 @@
+import {calendarModalities,modalityLabels} from './modalities.mjs';
 import {reviewCriteria,reviewSource} from './review.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const statusLabels={PENDENTE:'Pendente de conferência',ATENDIDO:'Atendido',NAO_ATENDIDO:'Não atendido',NAO_APLICAVEL:'Não aplicável'};
@@ -5,7 +6,7 @@ export function reviewDocument(record,review){
  const title='PARECER TÉCNICO-PEDAGÓGICO DE CALENDÁRIO ACADÊMICO E ADMINISTRATIVO';
  const assessed=review.entries.filter(e=>e.reviewed!==false).length;
  const notice=`Minuta para revisão humana e inserção no SEI. ${assessed}/${reviewCriteria.length} critérios conferidos pelo parecerista. Não é documento assinado nem aprovação oficial.`;
- const metadata=[['Processo nº',review.processNumber||'Não informado'],['Assunto',`Calendário Acadêmico e Administrativo ${record.state.year}`],['Campus',record.state.campus],['Oferta / cursos',`${record.state.offer} / ${record.courses}`],['Norma do ano analisado',review.applicableNorm||'Não informada — conferir antes de concluir'],['Modelo de referência',`${reviewSource.id}, páginas 1–2; ${reviewSource.norm} (calendário 2026)`],['Registro da análise',`${review.reviewer.name}; revisão ${review.revision}; calendário versão ${review.calendarVersion}; base institucional ${review.catalogueRevision}`]];
+ const metadata=[['Processo nº',review.processNumber||'Não informado'],['Assunto',`Calendário Acadêmico e Administrativo ${record.state.year}`],['Campus',record.state.campus],['Forma de oferta/nível e cursos',`${calendarModalities(record.state).map(m=>modalityLabels[m]).join(' + ')} / ${record.courses}`],['Norma do ano analisado',review.applicableNorm||'Não informada — conferir antes de concluir'],['Modelo de referência',`${reviewSource.id}, páginas 1–2; ${reviewSource.norm} (calendário 2026)`],['Registro da análise',`${review.reviewer.name}; revisão ${review.revision}; calendário versão ${review.calendarVersion}; base institucional ${review.catalogueRevision}`]];
  const bodyRows=reviewCriteria.map(c=>{const e=review.entries.find(e=>e.id===c.id)||{status:'PENDENTE',notes:'',reviewed:false};return {criterion:`${c.title}\nReferência do modelo: página ${c.page}, ${c.item}.`,assessment:`${statusLabels[e.status]||statusLabels.PENDENTE} — ${e.reviewed===false?'proposta automática, não confirmada':'avaliação humana'}\n${e.notes}`};});
  const conclusion=review.conclusion||'Conclusão pendente de elaboração pelo parecerista.';
  const section=`1. ANÁLISE TÉCNICO-PEDAGÓGICA (CALENDÁRIO VERSÃO ${review.calendarVersion})`;

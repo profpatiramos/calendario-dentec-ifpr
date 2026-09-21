@@ -1,14 +1,15 @@
+import {calendarName} from '/calendar-label.mjs';
 import {modalityLabels} from '/modalities.mjs';
 import './documents.js';
 import './review.js';
 import {categories} from '/categories.mjs';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let info,setup=false;
-const message=(s,error=false)=>{$('message').textContent=s;$('message').className=error?'error':'';};
+const message=(s,error=false)=>{$('message').textContent=new Date().toLocaleTimeString('pt-BR')+' — '+s;$('message').className=error?'error':'';};
 async function api(path,method='GET',body){const r=await fetch(path,{method,headers:body?{'Content-Type':'application/json','X-Dentec-Request':'1'}:{},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw Error(data.error);return data;}
 async function run(fn){try{await fn();}catch(e){message(e.message,true);}}
 async function load(){$('invite-result').hidden=true;$('invite-url').value='';const status=await api('/api/status');setup=status.setupRequired;if(status.hosted){$('deployment-note').textContent='Ambiente online. Dados e documentos são armazenados na base compartilhada da instituição.';$('auth-help').textContent='Use o e-mail institucional e a senha cadastrada neste sistema.';}$('google-login').hidden=setup||!status.googleEnabled;$('google-help').hidden=!status.googleEnabled;document.querySelector('#user-login-method option[value=google]').hidden=!status.googleEnabled;$('google-login').disabled=!status.googleEnabled;$('google-help').textContent=status.googleEnabled?'Use sua conta Google @ifpr.edu.br previamente cadastrada pelo ADMIN.':'Google institucional aguardando configuração pela TI. O acesso com senha local continua disponível.';$('auth').hidden=!!status.user;$('workspace').hidden=!status.user;$('logout').hidden=!status.user;$('setup-fields').hidden=!setup;$('auth-title').textContent=setup?'Criar administração':'Entrar';$('auth-submit').textContent=setup?'Criar conta ADMIN':'Entrar';$('admin-name').required=setup;$('setup-code').required=setup;if(setup)$('auth-help').textContent=status.hosted?'Crie a primeira conta ADMIN com o e-mail autorizado e o código privado de instalação que você salvou na Vercel. Escolha uma senha exclusiva para este sistema.':'Crie sua conta ADMIN local. Copie o código exibido no terminal que iniciou o aplicativo. Não use a senha da sua conta institucional.';if(!status.user)return;info=await api('/api/bootstrap');render();}
 function render(){const isAdmin=info.user.role==='ADMIN';document.dispatchEvent(new CustomEvent('institutional-documents',{detail:{isAdmin}}));$('account').textContent=`${info.user.name} · ${info.user.role}`;$('admin-tab').hidden=!isAdmin;$('review-tab').hidden=!isAdmin;$('review-content').hidden=true;document.dispatchEvent(new CustomEvent('review-calendars',{detail:isAdmin?info.calendars:[]}));$('catalogue-form').hidden=!isAdmin;
- const options=info.campuses.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('calendar-campus').innerHTML=options;$('user-campus').innerHTML=options;$('calendar-campus').disabled=!isAdmin;
+ const options=info.campuses.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('calendar-campus').innerHTML=options;$('user-campus').innerHTML=options;$('calendar-campus').disabled=!isAdmin;updateCalendarName();
  $('panel-title').textContent=isAdmin?'Painel ADMIN · Todos os campi':'Painel Campus · '+(info.campuses[0]?.name||'');
  $('access-scope').textContent=isAdmin?'Visualize os calendários de todos os campi e gerencie a base institucional.':'Seu acesso permite consultar e alterar somente os calendários do seu campus.';
  $('filter-label').hidden=!isAdmin;$('campus-filter').innerHTML='<option value="">Todos os campi</option>'+options;
@@ -46,3 +47,6 @@ run(load);
 document.addEventListener('document-base-changed',()=>run(async()=>{await load();document.querySelector('[data-page=institution]').click();}));
 
 document.addEventListener('click',e=>{const b=e.target.closest('[data-remove-member]');if(!b)return;const member=info.users.find(u=>u.id===b.dataset.removeMember);if(!member||!confirm(`Excluir o acesso de ${member.name}? Os convites e sessões serão cancelados. Calendários e pareceres serão preservados.`))return;run(async()=>{await api('/api/users/'+member.id,'DELETE',{});await load();document.querySelector('[data-page=administration]').click();message('Acesso excluído; histórico preservado.');});});
+
+function updateCalendarName(){const campus=info?.campuses.find(c=>c.id===$('calendar-campus').value);$('calendar-name').value=campus?calendarName($('calendar-year').value,campus.name):'';}
+$('calendar-campus').onchange=updateCalendarName;$('calendar-year').oninput=updateCalendarName;

@@ -2,7 +2,7 @@ import {modalityLabels} from '/modalities.mjs';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let opened=null,dirty=false;const reviewed=new Set();
 const labels={PENDENTE:'Pendente de análise',ATENDIDO:'Atendido',NAO_ATENDIDO:'Não atendido',NAO_APLICAVEL:'Não aplicável — justificar'};
-const message=s=>{$('review-message').textContent=s;};
+const message=s=>{$('review-message').textContent=new Date().toLocaleTimeString('pt-BR')+' — '+s;};
 async function api(path,method='GET',body){const response=await fetch(path,{method,headers:body?{'Content-Type':'application/json','X-Dentec-Request':'1'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error);return data;}
 document.addEventListener('review-calendars',e=>{$('review-calendar').innerHTML=e.detail.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} · ${c.year} · ${esc((c.modalities||[c.offer]).map(m=>modalityLabels[m]||m).join(' + '))}</option>`).join('');$('open-review').disabled=!e.detail.length;if(!e.detail.length)message('Nenhum calendário disponível para revisão.');});
 function progress(){$('review-progress').textContent=`${opened.criteria.length} critérios analisados inicialmente pelo sistema · ${reviewed.size} conferidos pelo parecerista. Isso não representa aprovação institucional.`;}
