@@ -50,6 +50,12 @@ test('accounts, campus isolation, history, propagation, versioning and persisten
  assert.deepEqual(definitive.state.modalities,['subsequente','graduacao']);assert.equal(definitive.state.regime,'misto');assert.equal(definitive.name,'Calendário 2027 - Campus Foz do Iguaçu');
  assert.equal((await call('/api/logs','GET')).status,401);const log=(await call('/api/logs','GET',null,campus)).data;assert(log.entries.every(e=>e.calendar.includes('Foz do Iguaçu')));assert(log.entries.some(e=>e.version===1));
  const blocked=await call('/api/calendars/'+definitive.id+'/pdf','POST',{version:1,catalogueRevision:1},campus);assert.equal(blocked.status,409);assert.match(blocked.data.error,/bloqueada/);assert.equal(rendered,0);
+ const vacationState={...definitive.state,teacherVacations:{julyStart:'2027-07-05',evidence:'Synthetic campus decision',julyEnd:'2027-12-31',total:999}};
+ assert.equal((await call('/api/calendars/'+definitive.id,'PUT',{version:1,catalogueRevision:1,state:vacationState},campus)).status,200);
+ const vacationSaved=(await call('/api/calendars/'+definitive.id,'GET',null,campus)).data;
+ assert.equal(vacationSaved.state.events.find(e=>e.id==='teacher-vacation-july').end,'2027-07-19');assert.equal(vacationSaved.state.teacherVacations.total,undefined);
+ assert.equal((await call('/api/calendars/'+definitive.id,'PUT',{version:2,catalogueRevision:1,state:{...vacationState,teacherVacations:{julyStart:'2027-07-18',evidence:'Synthetic'}}},campus)).status,400);
+ const savedLog=(await call('/api/logs','GET',null,campus)).data.entries;assert(savedLog.some(e=>e.version===2&&e.action==='Calendário salvo'));
  const reitoria=bootstrap.data.campuses.filter(c=>c.name==='Reitoria');assert.equal(reitoria.length,1);
  const removable=(await call('/api/users','POST',{name:'Remove fixture',email:'remove-fixture@ifpr.edu.br',role:'CAMPUS',campusId:foz.id,loginMethod:'invite'},admin)).data;
  assert.equal((await call('/api/users/'+removable.id,'DELETE',{},campus)).status,403);
