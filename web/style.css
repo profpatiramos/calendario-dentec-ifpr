@@ -3,3 +3,4 @@
 @media screen{#message:not(:empty){position:sticky;top:10px;z-index:30;box-shadow:0 2px 8px #0002;white-space:pre-line}}
 
 @media screen{#review-message:not(:empty),#document-message:not(:empty){position:sticky;top:10px;z-index:29;background:#e8f2ed;padding:12px;white-space:pre-line}}
+.history-area .records button{background:var(--green);border-color:var(--green);color:white}.history-area .records a{display:inline-block;margin-top:8px}#history-area{scroll-margin-top:80px}
